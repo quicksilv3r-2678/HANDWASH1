@@ -17,8 +17,8 @@
         [string]$textFilePath
     )    
 
-    $textFileName = Split-Path $textFilePathh -leaf
+    $textFileName = Split-Path $textFilePath -leaf
     Copy-Item "$textFilePath" -Destination .\$textFileName
-    fasmg.exe HANDWASH1.ASM HANDWASH1.EXE
+    fasm.exe HANDWASH1.ASM HANDWASH1.EXE
     .\HANDWASH1.exe $textFileName    
 }

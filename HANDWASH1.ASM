@@ -15,43 +15,94 @@
 ;        ▒░      ░              ░░                ░░              ░      ░▒
 ;         ░                                                              ░
 
-include 'format/format.inc'
-
-format PE64 console
+format PE64 ;console
 entry start
 
+;include 'format/format.inc'
+include 'win64a.inc'
+
+section '.bss' readable writeable
+
 STD_OUTPUT_HANDLE       = -11
+argc    dq ?
+argv    dq ?
+envp    dq ?
+sinfo   STARTUPINFO
 
 section '.text' code readable executable
 
 start:        
         ; get console standard handle
-        sub     rsp,8 ; reserve stack
-        mov     rcx,STD_OUTPUT_HANDLE
-        call    [GetStdHandle]
-        ;add     rsp,8 ; clear stack
+        stackPointer equ rsp
+        Math.sub equ sub
+        Math.add equ add
+        SetVar equ mov
+        paramSize equ 8
+        QuadWord equ qword
+        CallFunc equ call
+        LoadEffectiveAddress equ lea
+        
+        GetStdHandle.paramCount equ 1
+        GetStdHandle.nStdHandle equ rcx
+        GetStdHandle.totalParamSize equ GetStdHandle.paramCount * paramSize
+        GetStdHandle.returned equ rax
+
+        ; reserve stack
+        Math.sub stackPointer, GetStdHandle.totalParamSize
+        
+        SetVar GetStdHandle.nStdHandle, STD_OUTPUT_HANDLE
+        CallFunc [GetStdHandle.func]
+        
+        ; clear stack
+        Math.add stackPointer, GetStdHandle.totalParamSize
         ; out: rax handle
 
+        WriteConsoleA.paramCount equ 5
+        WriteConsoleA.totalParamSize equ WriteConsoleA.paramCount * paramSize
+        WriteConsoleA.dwBytesWrittenPtr equ QuadWord[stackPointer + 4 * paramSize]
+        WriteConsoleA.dwBytesWrittenRef equ r9
+        WriteConsoleA.dwBytesToWrite equ r8d
+        WriteConsoleA.lpBuffer equ rdx
+        WriteConsoleA.hFile equ rcx
+        
         ; write _data00 to console
-        ;sub     rsp,8*5 ; reserve stack «optimizing from previous function call»
-        sub     rsp,8*4 ; reserve stack
-        mov     qword[rsp+4*8],0 ; init dwBytesWritten to 0        
-        lea     r9,[rsp+4*8] ; &dwBytesWritten
-        mov     r8d,_data00_length ; dwBytesToWrite
-        lea     rdx,[_data00] ; DataBuffer
-        mov     rcx,rax ; hFile «stdout handle»
-        call    [WriteConsoleA]
-        ;add     rsp,8*5 ; clear stack
+        ; reserve stack
+        Math.sub stackPointer, WriteConsoleA.totalParamSize  
+        
+        ; reserve stack
+        ;Math.sub stackPointer, 8*4
+        SetVar WriteConsoleA.dwBytesWrittenPtr, 0
+        LoadEffectiveAddress WriteConsoleA.dwBytesWrittenRef, WriteConsoleA.dwBytesWrittenPtr
+        SetVar WriteConsoleA.dwBytesToWrite, _data00_length
+        LoadEffectiveAddress WriteConsoleA.lpBuffer, [_data00]
+        SetVar WriteConsoleA.hFile, GetStdHandle.returned
+        CallFunc [WriteConsoleA.func]
+         ; clear stack
+        Math.add stackPointer, WriteConsoleA.totalParamSize
         ; out: rax -1 on error
         
         ;sub     rsp,8*5 ; reserve stack «optimizing from previous function call»
-        push    [rsp+3*8] ; _StartInfo
-        mov     r9, 0 ; _DoWildCard 
-        lea     r8d,[rsp+2*8] ; _Env
-        lea     rdx,[rsp+8] ; _Argv
-        lea     rcx,[rsp] ; _Argc
-        call [__getmainargs]        
-        mov     rsi,[rdx]
+        ;push    [rsp+3*8] ; _StartInfo
+        ;mov     r9, 0 ; _DoWildCard 
+        ;lea     r8d,[rsp+2*8] ; _Env
+        ;lea     rdx,[rsp+8] ; _Argv
+        ;lea     rcx,[rsp] ; _Argc
+        ;call [__getmainargs]
+        ;mov     rsi,[rdx]
+
+        sub rsp, 30 ; 8(align) + 8(5th arg) + 32(shadow space)
+        lea rcx, [argc]
+        lea rdx, [argv]
+        lea r8, [envp]
+        mov r9, 0
+        mov qword [rsp + 8*4], sinfo
+        call [__getmainargs]
+        mov rax, [argv]
+
+        mov rcx, qword [argc]
+        push rax rcx
+        mov rbx, rcx
+
         add     rsp,8*5 ; clear stack
 
         ; exit
@@ -81,10 +132,10 @@ section '.idata' import data readable writeable
 ; ≡≡≡ array of IMAGE_THUNK_DATA structures ≡≡≡
 kernel_table:
     ExitProcess     dq RVA _ExitProcess
-    GetStdHandle    dq RVA _GetStdHandle
+    GetStdHandle.func dq RVA _GetStdHandle
     WriteFile       dq RVA _WriteFile
     CreateFileA     dq RVA _CreateFileA
-    WriteConsoleA   dq RVA _WriteConsoleA
+    WriteConsoleA.func   dq RVA _WriteConsoleA
                     dq 0
 msvcrt_table:    
     __getmainargs   dq RVA ___getmainargs
